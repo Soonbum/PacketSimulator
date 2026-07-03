@@ -1,15 +1,23 @@
-using HelperLibrary;
+using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
+using HelperLibrary;
 
 namespace PacketSimulatorServer;
+
+// ArrayPool에서 패킷을 사용하기 좋게 가공한 형태로 채널에 넣게 됨 (ArrayPool 사용시 메모리 부하가 많이 경감됨)
+public struct RentedPacket
+{
+    public byte[] Data; // 풀에서 빌려온 배열
+    public int Length;  // 실제 유효한 패킷 길이
+}
 
 public partial class ServerForm : Form
 {
     private TcpListener _listener;
     private CancellationTokenSource _cts;
-    private Channel<byte[]> _packetChannel;
+    private Channel<RentedPacket> _packetChannel;
 
     private byte _startByte;
     private int _offset;
@@ -26,7 +34,7 @@ public partial class ServerForm : Form
         {
             FullMode = BoundedChannelFullMode.DropOldest
         };
-        _packetChannel = Channel.CreateBounded<byte[]>(options);
+        _packetChannel = Channel.CreateBounded<RentedPacket>(options);
     }
 
     private void chkStart_CheckedChanged(object sender, EventArgs e)
@@ -74,13 +82,13 @@ public partial class ServerForm : Form
         }
 
         // 정상적으로 서버 구동 및 백그라운드 Task 시작
-
         int port = int.Parse(txtPort.Text);
         _listener = new TcpListener(IPAddress.Parse(txtIP.Text), port);
         _cts = new CancellationTokenSource();
         _listener.Start();
 
         // 소비자(Consumer) 태스크 시작: 채널에 데이터가 들어오면 처리
+        // 채널에 들어온 패킷을 소비하여 실질적으로 해독 및 처리하는 함수
         _ = Task.Run(() => ConsumePacketsAsync(_cts.Token));
 
         try
@@ -89,6 +97,8 @@ public partial class ServerForm : Form
             {
                 // 리스너가 중지되면 여기서 SocketException(995) 발생
                 TcpClient client = await _listener.AcceptTcpClientAsync();
+
+                // 패킷이 들어오면 클라이언트별로 패킷을 합친 후 채널로 전달함 (패킷 조립 및 큐잉 담당)
                 _ = Task.Run(() => HandleClientAsync(client, _cts.Token));
             }
         }
@@ -116,63 +126,143 @@ public partial class ServerForm : Form
         _listener?.Stop();
     }
 
+    // 패킷이 들어오면 클라이언트별로 패킷을 합친 후 채널로 전달함 (패킷 조립 및 큐잉 담당)
     private async Task HandleClientAsync(TcpClient client, CancellationToken token)
     {
         using (client)
         using (NetworkStream stream = client.GetStream())
         {
-            byte[] buffer = new byte[8192]; // 대규모 패킷을 고려해 버퍼 크기 증가
+            // 수신용 버퍼를 Pool에서 대여 (new byte[] 제거)
+            byte[] readBuffer = ArrayPool<byte>.Shared.Rent(8192);
 
-            while (!token.IsCancellationRequested)
+            // 클라이언트별 누적 버퍼 (조각난 패킷을 모으는 역할)
+            List<byte> accumBuffer = new List<byte>();
+
+            try
             {
-                try
+                while (!token.IsCancellationRequested)
                 {
-                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, token);
-                    if (bytesRead == 0) break; // 클라이언트 연결 종료
+                    int bytesRead = await stream.ReadAsync(readBuffer, 0, readBuffer.Length, token);
+                    if (bytesRead == 0) break; // 연결 종료
 
-                    byte[] receivedData = new byte[bytesRead];
-                    Array.Copy(buffer, receivedData, bytesRead);
+                    // 새로 수신된 데이터를 누적 버퍼에 추가
+                    for (int i = 0; i < bytesRead; i++)
+                    {
+                        accumBuffer.Add(readBuffer[i]);
+                    }
 
-                    // 채널에 패킷 쓰기 (비동기 병목 없음)
-                    await _packetChannel.Writer.WriteAsync(receivedData, token);
+                    // 누적 버퍼 내에서 완성된 패킷 연속 추출 (뭉친 패킷 해결)
+                    while (accumBuffer.Count > 0)
+                    {
+                        int packetLength = TryParsePacketLength(accumBuffer);
+
+                        if (packetLength == 0)
+                        {
+                            // 아직 패킷이 다 오지 않음 (조각남), 더 수신하도록 반복문 빠져나감
+                            break;
+                        }
+                        else if (packetLength == -1)
+                        {
+                            // 쓰레기 데이터 처리: 시작 바이트가 나올 때까지 앞부분을 잘라냄
+                            int startIndex = accumBuffer.IndexOf(_startByte);
+                            if (startIndex == -1)
+                            {
+                                accumBuffer.Clear(); // 싹 다 버림
+                                break;
+                            }
+                            else
+                            {
+                                accumBuffer.RemoveRange(0, startIndex);
+                                continue; // 잘라내고 다시 검사
+                            }
+                        }
+
+                        // 완성된 패킷 추출용 버퍼를 Pool에서 대여 (new byte[] 제거)
+                        byte[] packetData = ArrayPool<byte>.Shared.Rent(packetLength);
+                        accumBuffer.CopyTo(0, packetData, 0, packetLength);
+
+                        // 버퍼에서 처리된 패킷만큼 삭제
+                        accumBuffer.RemoveRange(0, packetLength);
+
+                        // 채널로 전송
+                        await _packetChannel.Writer.WriteAsync(new RentedPacket { Data = packetData, Length = packetLength }, token);
+                    }
                 }
-                catch
-                {
-                    break; // 통신 에러 발생 시 루프 종료
-                }
+            }
+            catch
+            {
+                // 통신 에러 시 루프 종료
+            }
+            finally
+            {
+                // 사용이 끝난 수신 버퍼는 반드시 Pool에 반환하여 재사용
+                ArrayPool<byte>.Shared.Return(readBuffer);
             }
         }
     }
 
+    /// <summary>
+    /// 패킷 내 길이 정보를 추출해서 패킷 길이를 알아내는 함수
+    /// </summary>
+    /// <param name="buffer">바이트배열 패킷</param>
+    /// <returns>패킷 길이</returns>
+    private int TryParsePacketLength(List<byte> buffer)
+    {
+        // 시작 바이트 확인
+        int startIndex = buffer.IndexOf(_startByte);
+        if (startIndex == -1) return -1; // 시작 바이트 없음
+
+        // 시작 바이트가 맨 앞이 아니면, 그 앞은 쓰레기 데이터이므로 자르도록 -1 반환
+        if (startIndex > 0) return -1;
+
+        // 패킷 길이를 읽기 위해 필요한 데이터(오프셋 + 읽기범위)가 수신되었는지 확인
+        int lengthIndex = startIndex + _offset;
+        if (lengthIndex + _readRange > buffer.Count)
+            return 0; // 아직 덜 옴
+
+        // 길이 데이터 추출 (단기 사용용 작은 배열이므로 오버헤드 미미함)
+        byte[] lengthBytes = new byte[_readRange];
+        buffer.CopyTo(lengthIndex, lengthBytes, 0, _readRange);
+
+        int packetLength = PacketHelper.GetLengthFromBytes(lengthBytes, _isLittleEndian);
+
+        if (packetLength <= 0) return -1; // 잘못된 길이 값 (무한루프 방지)
+
+        // 전체 패킷 길이만큼 수신되었는지 확인
+        if (buffer.Count < packetLength)
+            return 0; // 덜 옴
+
+        return packetLength;
+    }
+
+    // 채널에 들어온 패킷을 소비하여 실질적으로 해독 및 처리하는 함수
     private async Task ConsumePacketsAsync(CancellationToken token)
     {
         try
         {
-            // 채널에 데이터가 들어올 때마다 비동기로 꺼내옴
-            await foreach (byte[] data in _packetChannel.Reader.ReadAllAsync(token))
+            await foreach (RentedPacket packet in _packetChannel.Reader.ReadAllAsync(token))
             {
-                // UI를 차단하지 않고 백그라운드에서 파싱 로직 수행
-                byte[] parsedPacket = ParsePacket(data);
+                // UI에 안전하게 넘기기 위해 유효한 길이(Length)만큼만 정확히 잘라냄
+                // UI 스레드에서는 컨트롤(TextBox)을 생성해야 하므로 여기서 최종 1회 복사
+                byte[] finalPacket = new byte[packet.Length];
+                Array.Copy(packet.Data, finalPacket, packet.Length);
 
-                if (parsedPacket != null)
+                this.Invoke(new Action(() =>
                 {
-                    // 파싱이 완료된 최종 데이터만 UI 스레드에 던짐
-                    this.Invoke(new Action(() =>
-                    {
-                        RenderPacketToTextBoxes(parsedPacket);
-                        AddPacketToListBox(parsedPacket);
-                        UpdateQueueUI();
-                    }));
+                    RenderPacketToTextBoxes(finalPacket);
+                    AddPacketToListBox(finalPacket);
+                    UpdateQueueUI();
+                }));
 
-                    // --- 의도적인 1초 딜레이 추가 ---
-                    // 취소 토큰(token)을 같이 넘겨주면 서버 종료 시 딜레이 중이더라도 즉각 취소됩니다.
-                    await Task.Delay(1000, token);
-                }
+                // 중요: 사용이 끝난 대여 배열을 풀에 반납
+                ArrayPool<byte>.Shared.Return(packet.Data);
+
+                await Task.Delay(1000, token);
             }
         }
         catch (OperationCanceledException)
         {
-            // 서버 종료 시 Task.Delay 대기 중이거나 ReadAllAsync 대기 중일 때 발생하는 예외 (정상 종료)
+            // 정상 종료
         }
     }
 
@@ -197,42 +287,7 @@ public partial class ServerForm : Form
         }
     }
 
-    private byte[] ParsePacket(byte[] data)
-    {
-        // 1. 시작 바이트 위치 검색
-        int startIndex = Array.IndexOf(data, _startByte);
-
-        // 시작 바이트를 찾지 못했으면 유효한 패킷이 아님
-        if (startIndex == -1)
-            return null;
-
-        // 2. 패킷 길이를 읽기 위해 필요한 최소 데이터가 수신되었는지 확인
-        int lengthIndex = startIndex + _offset;
-        if (lengthIndex + _readRange > data.Length)
-            return null; // 아직 길이 정보까지 수신되지 않음 (패킷 잘림 대기)
-
-        // 3. 길이 데이터 추출
-        byte[] lengthBytes = new byte[_readRange];
-        Array.Copy(data, lengthIndex, lengthBytes, 0, _readRange);
-
-        // 4. 엔디안 설정에 맞춰 바이트 배열을 정수형 길이로 변환 (미리 만든 Helper 사용)
-        int packetLength = PacketHelper.GetLengthFromBytes(lengthBytes, _isLittleEndian);
-
-        // 비정상적인 길이 값 방어 로직 (무한 루프나 메모리 에러 방지)
-        if (packetLength <= 0)
-            return null;
-
-        // 5. 계산된 총 패킷 길이만큼 전체 데이터가 수신되었는지 확인
-        if (startIndex + packetLength > data.Length)
-            return null; // 아직 전체 패킷이 수신되지 않음 (패킷 잘림 대기)
-
-        // 6. 시작 바이트부터 총 길이만큼의 완전한 패킷 추출
-        byte[] finalPacket = new byte[packetLength];
-        Array.Copy(data, startIndex, finalPacket, 0, packetLength);
-
-        return finalPacket;
-    }
-
+    // 대기 중인 패킷을 알려주는 라벨 업데이트
     private void UpdateQueueUI()
     {
         // Channel.Reader.Count 로 현재 큐에 쌓인 대기열 개수를 확인할 수 있습니다 (선택 사항)
@@ -242,6 +297,7 @@ public partial class ServerForm : Form
         }
     }
 
+    // hex값이 들어있는 바이트배열 패킷을 보기 좋게 나눠서 리스트박스에 넣음
     private void AddPacketToListBox(byte[] packet)
     {
         // byte 배열을 "D1-00-A9" 형태로 변환한 뒤, 하이픈을 공백으로 치환하여 "D1 00 A9"로 만듭니다.

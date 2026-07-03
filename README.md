@@ -2,7 +2,9 @@
 
 * 설명
   - byte[] 패킷을 송수신하고 수신측에서 시각적으로 확인할 수 있도록 만든 시뮬레이터
-  - .NET 고성능 비동기 큐 Channel을 적용하였음
+  - .NET 고성능 비동기 큐 Channel을 적용하였음 (버퍼 오버플로우로 인한 메모리 폭발, 서버 다운 방식)
+  - ArrayPool 메모리 풀링을 사용하여 메모리 할당 파편화를 방지
+  - 패킷이 쪼개져서 들어와도 유실되지 않도록 누적 버퍼 구조 적용
 
 <img width="372" height="216" alt="image" src="https://github.com/user-attachments/assets/e9e0a26e-3fbd-4fdd-a5e4-003549980cf1" />
 
