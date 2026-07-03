@@ -44,6 +44,7 @@
             chkStart = new CheckBox();
             pnlPacketBytes = new FlowLayoutPanel();
             lblQueueCount = new Label();
+            lstPacketHistory = new ListBox();
             grpEndianness.SuspendLayout();
             SuspendLayout();
             // 
@@ -193,11 +194,21 @@
             lblQueueCount.TabIndex = 13;
             lblQueueCount.Text = "대기 중인 패킷: _ 개";
             // 
+            // lstPacketHistory
+            // 
+            lstPacketHistory.FormattingEnabled = true;
+            lstPacketHistory.ItemHeight = 15;
+            lstPacketHistory.Location = new Point(23, 240);
+            lstPacketHistory.Name = "lstPacketHistory";
+            lstPacketHistory.Size = new Size(436, 199);
+            lstPacketHistory.TabIndex = 14;
+            // 
             // ServerForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(487, 237);
+            ClientSize = new Size(487, 463);
+            Controls.Add(lstPacketHistory);
             Controls.Add(lblQueueCount);
             Controls.Add(pnlPacketBytes);
             Controls.Add(chkStart);
@@ -238,5 +249,6 @@
         private CheckBox chkStart;
         private FlowLayoutPanel pnlPacketBytes;
         private Label lblQueueCount;
+        private ListBox lstPacketHistory;
     }
 }

@@ -160,6 +160,7 @@ public partial class ServerForm : Form
                     this.Invoke(new Action(() =>
                     {
                         RenderPacketToTextBoxes(parsedPacket);
+                        AddPacketToListBox(parsedPacket);
                         UpdateQueueUI();
                     }));
 
@@ -239,5 +240,18 @@ public partial class ServerForm : Form
         {
             lblQueueCount.Text = $"대기 중인 패킷: {_packetChannel.Reader.Count} 개";
         }
+    }
+
+    private void AddPacketToListBox(byte[] packet)
+    {
+        // byte 배열을 "D1-00-A9" 형태로 변환한 뒤, 하이픈을 공백으로 치환하여 "D1 00 A9"로 만듭니다.
+        string hexString = BitConverter.ToString(packet).Replace("-", " ");
+
+        // ListBox에 문자열 추가
+        lstPacketHistory.Items.Add(hexString);
+
+        // 항상 가장 최근에 추가된(맨 아래) 항목으로 스크롤이 이동하도록 설정 (선택 사항)
+        lstPacketHistory.SelectedIndex = lstPacketHistory.Items.Count - 1;
+        lstPacketHistory.ClearSelected(); // 파란색 선택 표시 해제
     }
 }
