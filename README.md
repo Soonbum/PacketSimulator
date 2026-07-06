@@ -33,23 +33,25 @@
       - 명령 프롬프트(CMD)를 관리자 권한으로 실행합니다.
       - 서비스 생성 명령어(sc.exe) 실행: 아래 명령어를 입력합니다. (경로와 서비스 이름은 본인의 상황에 맞게 수정하세요)
         ```
-        sc.exe create "나의패킷서버" binPath= "C:\경로\내프로그램.exe" start= auto
+        sc.exe create "PacketServer" binPath= "C:\Services\PacketService\PacketSimulatorServerWorkerService.exe" start= auto
         ```
-        * "나의패킷서버": 윈도우 서비스 관리자(services.msc)에 표시될 이름입니다.
-        * binPath: 실제 실행 파일이 위치한 절대 경로입니다.
+        * "PacketServer": 윈도우 서비스 관리자(services.msc)에 표시될 이름입니다.
+        * binPath= "...": 실제 실행 파일이 위치한 절대 경로입니다.
         * start= auto: 윈도우 부팅 시 자동으로 서비스가 시작되도록 설정합니다.
         * __sc 명령어의 문법상 반드시 등호(=) 뒤에 공백(띄어쓰기)이 하나 있어야 합니다.__
     * 서비스 시작
       ```
-      sc.exe start "나의패킷서버"
+      sc.exe start "PacketServer"
       ```
       - services.msc를 실행하여 서비스 목록에 등록되었는지 확인합니다.
       - 이후 서비스가 죽거나 재부팅되어도 OS가 자동으로 서버를 실행해 줍니다.
     * 서비스 중지
       ```
-      sc.exe stop "나의패킷서버"
+      sc.exe stop "PacketServer"
       ```
     * 서비스 삭제
       ```
-      sc.exe delete "나의패킷서버"
+      sc.exe delete "PacketServer"
       ```
+    * ASP.NET Core Web App을 통해서도 접근할 수 있도록 함
+      - http://localhost:5000
