@@ -57,5 +57,4 @@
       ```
     * ASP.NET Core Web App을 통해서도 접근할 수 있도록 함
       - http://localhost:5000
-        <img width="1039" height="766" alt="image" src="https://github.com/user-attachments/assets/dfe99a04-7982-4de5-8a1a-40583816cf93" />
 
