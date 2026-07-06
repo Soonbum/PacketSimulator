@@ -257,7 +257,7 @@ public partial class ServerForm : Form
                 // 중요: 사용이 끝난 대여 배열을 풀에 반납
                 ArrayPool<byte>.Shared.Return(packet.Data);
 
-                await Task.Delay(1000, token);
+                //await Task.Delay(1000, token);
             }
         }
         catch (OperationCanceledException)

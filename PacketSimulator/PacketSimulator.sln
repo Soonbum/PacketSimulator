@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HelperLibrary", "HelperLibr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PacketSimulatorClient", "PacketSimulatorClient\PacketSimulatorClient.csproj", "{2B38427E-AD14-42D1-B351-ED2FC43E42B4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PacketSimulatorServerWorkerService", "PacketSimulatorServerWorkerService\PacketSimulatorServerWorkerService.csproj", "{28B4D11D-FF81-40F6-B970-538B10C24048}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{2B38427E-AD14-42D1-B351-ED2FC43E42B4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2B38427E-AD14-42D1-B351-ED2FC43E42B4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2B38427E-AD14-42D1-B351-ED2FC43E42B4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{28B4D11D-FF81-40F6-B970-538B10C24048}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{28B4D11D-FF81-40F6-B970-538B10C24048}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{28B4D11D-FF81-40F6-B970-538B10C24048}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{28B4D11D-FF81-40F6-B970-538B10C24048}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
