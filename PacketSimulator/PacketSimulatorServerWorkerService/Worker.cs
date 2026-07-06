@@ -1,10 +1,11 @@
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using PacketSimulatorServer;
 using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace PacketSimulatorServerWorkerService;
 
@@ -19,16 +20,18 @@ public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
     private readonly PacketServerSettings _settings;
+    private readonly PacketStore _packetStore;
 
     private TcpListener _listener;
     private Channel<RentedPacket> _packetChannel;
     private byte _startByte;
 
     // 생성자: 의존성 주입을 통해 로거와 설정값을 받아옵니다.
-    public Worker(ILogger<Worker> logger, IOptions<PacketServerSettings> options)
+    public Worker(ILogger<Worker> logger, IOptions<PacketServerSettings> options, PacketStore packetStore)
     {
         _logger = logger;
         _settings = options.Value; // 텍스트박스를 대체할 설정값들
+        _packetStore = packetStore;
 
         // 2. ServerForm 생성자에 있던 Channel 셋업 그대로 이식
         var channelOptions = new BoundedChannelOptions(10000)
@@ -144,19 +147,17 @@ public class Worker : BackgroundService
         {
             await foreach (RentedPacket packet in _packetChannel.Reader.ReadAllAsync(token))
             {
-                // UI 출력을 위해 새로운 byte 배열을 생성했던 부분은 이제 필요 없습니다. (복사 생략으로 성능 향상)
-
                 // 기존 AddPacketToListBox 역할을 _logger.LogInformation이 대신합니다.
                 // 빌려온 Data 배열은 8192 등 넉넉한 크기이므로, 유효한 Length까지만 잘라서 문자열로 만듭니다.
                 string hexString = BitConverter.ToString(packet.Data, 0, packet.Length).Replace("-", " ");
 
-                // 화면의 리스트박스 대신 콘솔 창(또는 이벤트 로그)에 패킷 내역을 찍습니다.
-                _logger.LogInformation("[패킷 수신 완료] {HexString} (대기큐: {Count})",
-                    hexString, _packetChannel.Reader.Count);
+                // 1. 기존처럼 파일에 로그 남기기
+                _logger.LogInformation("[패킷 수신 완료] {HexString}", hexString);
+
+                // 2. 웹에서 볼 수 있도록 큐에 저장하기 (추가!)
+                _packetStore.AddPacket($"[{DateTime.Now:HH:mm:ss}] {hexString}");
 
                 ArrayPool<byte>.Shared.Return(packet.Data);
-
-                // 백그라운드 서비스이므로 UI 버벅임을 막기 위해 넣었던 Task.Delay(1000)는 제거해도 무방합니다.
             }
         }
         catch (OperationCanceledException) { }
