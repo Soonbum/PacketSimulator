@@ -25,66 +25,20 @@
   - (8) 리스트박스: 처리된 패킷들이 여기에 쌓임
 
 * 실제 운영 서버(Production) 구현시 윈도우 서비스 형태로 배포하고 싶다면 "작업자 서비스 (Worker Service)" 템플릿으로 개발하는 것을 추천
+  - PacketSimulatorServerWorkerService 프로젝트 참조
   - NuGet 패키지: Microsoft.Extensions.Hosting.WindowsServices 설치 필수
-  - 다음과 같이 Program.cs 수정 필요
-    ```cs
-    using Microsoft.Extensions.Hosting;
-
-    IHost host = Host.CreateDefaultBuilder(args)
-        .UseWindowsService() // <--- 이 부분을 추가합니다!
-        .ConfigureLogging(logging =>
-        {
-            logging.ClearProviders();  // 기본 로거 설정 초기화
-            logging.AddConsole();     // 콘솔에 로그 출력 추가
-            logging.AddEventLog();   // 윈도우 이벤트 로그 출력 추가
-        })
-        .ConfigureServices(services =>
-        {
-            services.AddHostedService<Worker>();
-        })
-        .Build();
-
-    host.Run();
-    ```
-  - 핵심 서버 로직 작성 (Worker.cs)
-    ```cs
-    public class Worker : BackgroundService
-    {
-        private readonly ILogger<Worker> _logger;
-
-        public Worker(ILogger<Worker> logger)
-        {
-            _logger = logger;
-        }
-
-        // 서비스가 시작될 때 자동으로 실행되는 메인 루프
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-        {
-            _logger.LogInformation("TCP 패킷 서버가 시작되었습니다.");
-
-            // 여기에 기존 ServerForm.cs의 StartServer()에 있던 로직을 넣으시면 됩니다.
-            // Task.Run(() => ConsumePacketsAsync(...))
-            // TcpListener 대기 등...
-
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                // 이 루프는 서비스가 종료될 때까지 백그라운드에서 유지됩니다.
-                await Task.Delay(1000, stoppingToken);
-            }
-        }
-    }
-    ```
   - 개발이 완료된 후 빌드한 .exe 파일을 윈도우의 sc.exe create 명령어나 PowerShell을 통해 서비스로 등록하면, 완벽한 백그라운드 윈도우 서비스로 동작하게 됨
     * 서비스 등록 방법
       - 배포용 파일 생성: Visual Studio에서 프로젝트를 게시(Publish)하여 실행 파일(.exe)이 포함된 폴더를 준비합니다.
       - 명령 프롬프트(CMD)를 관리자 권한으로 실행합니다.
       - 서비스 생성 명령어(sc.exe) 실행: 아래 명령어를 입력합니다. (경로와 서비스 이름은 본인의 상황에 맞게 수정하세요)
         ```
-        sc.exe create "나의패킷서버" binPath="C:\경로\내프로그램.exe" start=auto
+        sc.exe create "나의패킷서버" binPath= "C:\경로\내프로그램.exe" start= auto
         ```
         * "나의패킷서버": 윈도우 서비스 관리자(services.msc)에 표시될 이름입니다.
         * binPath: 실제 실행 파일이 위치한 절대 경로입니다.
-        * start=auto: 윈도우 부팅 시 자동으로 서비스가 시작되도록 설정합니다.
+        * start= auto: 윈도우 부팅 시 자동으로 서비스가 시작되도록 설정합니다.
+        * __sc 명령어의 문법상 반드시 등호(=) 뒤에 공백(띄어쓰기)이 하나 있어야 합니다.__
     * 서비스 시작
       ```
       sc.exe start "나의패킷서버"
