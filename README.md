@@ -24,13 +24,15 @@
   - (7) 패널 및 여러 개의 텍스트박스: 바이트 단위로 패킷을 쪼개서 보여줌
   - (8) 리스트박스: 처리된 패킷들이 여기에 쌓임
 
-* 실제 운영 서버(Production) 구현시 윈도우 서비스 형태로 배포하고 싶다면 "작업자 서비스 (Worker Service)" 템플릿으로 개발하는 것을 추천
+* 실제 운영 서버(Production) 구현시 윈도우 서비스 형태로 배포하고 싶다면 "작업자 서비스 (Worker Service)" 템플릿 또는 "ASP.NET Core 웹 API" 템플릿으로 개발하는 것을 추천
   - PacketSimulatorServerWorkerService 프로젝트 참조
+    * 작업자 서비스 (Worker Service) 템플릿으로 진행할 경우: 윈도우 서비스만 가능
+    * ASP.NET Core 웹 API 템플릿으로 진행할 경우: 윈도우 서비스 + Minimal API를 이용해 웹 서버 구현 가능
   - NuGet 패키지: Microsoft.Extensions.Hosting.WindowsServices 설치 필수
   - 개발이 완료된 후 빌드한 .exe 파일을 윈도우의 sc.exe create 명령어나 PowerShell을 통해 서비스로 등록하면, 완벽한 백그라운드 윈도우 서비스로 동작하게 됨
     * 서비스 등록 방법
-      - 배포용 파일 생성: Visual Studio에서 프로젝트를 게시(Publish)하여 실행 파일(.exe)이 포함된 폴더를 준비합니다.
-      - 명령 프롬프트(CMD)를 관리자 권한으로 실행합니다.
+      - 배포용 파일 생성: Visual Studio에서 프로젝트를 게시(Publish)하여 실행 파일(.exe)이 포함된 폴더를 준비합니다. (예: "C:\Services\PacketService")
+      - __명령 프롬프트(CMD)를 관리자 권한으로 실행합니다.__
       - 서비스 생성 명령어(sc.exe) 실행: 아래 명령어를 입력합니다. (경로와 서비스 이름은 본인의 상황에 맞게 수정하세요)
         ```
         sc.exe create "PacketServer" binPath= "C:\Services\PacketService\PacketSimulatorServerWorkerService.exe" start= auto
@@ -55,3 +57,5 @@
       ```
     * ASP.NET Core Web App을 통해서도 접근할 수 있도록 함
       - http://localhost:5000
+        <img width="1039" height="766" alt="image" src="https://github.com/user-attachments/assets/dfe99a04-7982-4de5-8a1a-40583816cf93" />
+
